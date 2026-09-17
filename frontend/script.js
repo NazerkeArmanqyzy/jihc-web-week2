@@ -1,175 +1,99 @@
-const apiUrl = "http://localhost:5001";
-
-const registerModal = document.getElementById("registerModal");
-const loginModal = document.getElementById("loginModal");
-const registrationForm = document.getElementById("registrationForm");
-const loginForm = document.getElementById("loginForm");
-const usersTableBody = document.getElementById("usersTableBody");
-const closeRegisterModal = document.getElementById("closeRegisterModal");
-const closeLoginModal = document.getElementById("closeLoginModal");
-
-async function getUsers() {
-    const response = await fetch(`${apiUrl}/users`);
-
-    if (!response.ok) {
-        throw new Error("Could not load users.");
-    }
-
-    return await response.json();
+const api = "http://localhost:5001", $ = id => document.getElementById(id);
+const registerModal = $("registerModal"), loginModal = $("loginModal");
+const show = (message, text, color) => {
+    message.textContent = text;
+    message.style.color = color;
+};
+const openModal = (modal, messageId) => {
+    $(messageId).textContent = "";
+    modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+};
+const closeModal = modal => {
+    modal.style.display = "none";
+    document.body.style.overflow = "";
+};
+async function request(path, options = {}) {
+    const response = await fetch(api + path, options);
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Request failed");
+    return result;
 }
-
+const post = (path, data) => request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+});
+const addCell = (row, value) => {
+    const cell = document.createElement("td");
+    cell.className = "u7";
+    cell.textContent = value;
+    row.append(cell);
+};
 async function renderUsers() {
-    if (!usersTableBody) return;
+    const table = $("usersTableBody");
+    if (!table) return;
+    try {
+        const users = await request("/users");
+        table.innerHTML = users.length ? "" : '<tr><td class="u7" colspan="3">No registered members yet</td></tr>';
+        users.forEach((user, index) => {
+            const row = document.createElement("tr");
+            [index + 1, user.fullName || user.username, user.email || user.username]
+                .forEach(value => addCell(row, value));
+            table.append(row);
+        });
+    } catch {
+        table.innerHTML = '<tr><td class="u7" colspan="3">Could not load users</td></tr>';
+    }
+}
+document.querySelectorAll("[data-modal-open]").forEach(button => {
+    button.onclick = () => {
+        const type = button.dataset.modalOpen;
+        openModal($(type + "Modal"), type === "register" ? "registrationMessage" : "loginMessage");
+    };
+});
+$("closeRegisterModal").onclick = () => closeModal(registerModal);
+$("closeLoginModal").onclick = () => closeModal(loginModal);
+$("registrationForm").onsubmit = async event => {
+    event.preventDefault();
+    const form = event.target;
+    const message = $("registrationMessage");
+    const email = $("registerEmail").value.trim().toLowerCase();
+    const password = $("registerPassword").value;
+
+    if (password !== $("confirmPassword").value) {
+        show(message, "Passwords do not match.", "red");
+        return;
+    }
 
     try {
-        const users = await getUsers();
-        usersTableBody.innerHTML = "";
-
-        if (users.length === 0) {
-            usersTableBody.innerHTML =
-                '<tr><td class="u7" colspan="3">No registered members yet</td></tr>';
-            return;
-        }
-
-        for (let i = 0; i < users.length; i++) {
-            const row = document.createElement("tr");
-            const numberCell = document.createElement("td");
-            const nameCell = document.createElement("td");
-            const emailCell = document.createElement("td");
-
-            numberCell.textContent = i + 1;
-            nameCell.textContent = users[i].fullName || users[i].username;
-            emailCell.textContent = users[i].email || users[i].username;
-
-            numberCell.className = "u7";
-            nameCell.className = "u7";
-            emailCell.className = "u7";
-
-            row.append(numberCell, nameCell, emailCell);
-            usersTableBody.append(row);
-        }
+        await post("/register", {
+            username: email,
+            fullName: $("fullName").value.trim(),
+            email,
+            password
+        });
+        await renderUsers();
+        form.reset();
+        closeModal(registerModal);
     } catch (error) {
-        usersTableBody.innerHTML =
-            '<tr><td class="u7" colspan="3">Could not load users</td></tr>';
+        show(message, error instanceof TypeError ? "Could not connect to the server." : error.message, "red");
     }
-}
+};
+$("loginForm").onsubmit = async event => {
+    event.preventDefault();
+    const form = event.target;
+    const message = $("loginMessage");
 
-document.querySelectorAll('[data-modal-open="register"]')
-    .forEach(function (button) {
-        button.onclick = function () {
-            document.getElementById("registrationMessage").textContent = "";
-            registerModal.style.display = "flex";
-            document.body.style.overflow = "hidden";
-        };
-    });
-
-document.querySelectorAll('[data-modal-open="login"]')
-    .forEach(function (button) {
-        button.onclick = function () {
-            document.getElementById("loginMessage").textContent = "";
-            loginModal.style.display = "flex";
-            document.body.style.overflow = "hidden";
-        };
-    });
-
-if (closeRegisterModal) {
-    closeRegisterModal.onclick = function () {
-        registerModal.style.display = "none";
-        document.body.style.overflow = "";
-    };
-}
-
-if (closeLoginModal) {
-    closeLoginModal.onclick = function () {
-        loginModal.style.display = "none";
-        document.body.style.overflow = "";
-    };
-}
-
-if (registrationForm) {
-    registrationForm.onsubmit = async function (event) {
-        event.preventDefault();
-
-        const fullName = document.getElementById("fullName").value.trim();
-        const email = document.getElementById("registerEmail").value.trim().toLowerCase();
-        const password = document.getElementById("registerPassword").value;
-        const confirmPassword = document.getElementById("confirmPassword").value;
-        const message = document.getElementById("registrationMessage");
-
-        if (password !== confirmPassword) {
-            message.textContent = "Passwords do not match.";
-            message.style.color = "red";
-            return;
-        }
-
-        try {
-            const response = await fetch(`${apiUrl}/register`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    username: email,
-                    fullName: fullName,
-                    email: email,
-                    password: password
-                })
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.message);
-            }
-
-            await renderUsers();
-            registrationForm.reset();
-
-            registerModal.style.display = "none";
-            document.body.style.overflow = "";
-        } catch (error) {
-            message.textContent = error.message;
-            message.style.color = "red";
-        }
-    };
-}
-
-if (loginForm) {
-    loginForm.onsubmit = async function (event) {
-        event.preventDefault();
-
-        const email = document.getElementById("loginEmail").value.trim().toLowerCase();
-        const password = document.getElementById("loginPassword").value;
-        const message = document.getElementById("loginMessage");
-
-        try {
-            const response = await fetch(`${apiUrl}/login`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    username: email,
-                    password: password
-                })
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                message.textContent = result.message;
-                message.style.color = "red";
-                return;
-            }
-
-            message.textContent = result.message;
-            message.style.color = "green";
-            loginForm.reset();
-        } catch (error) {
-            message.textContent = "Could not connect to the server.";
-            message.style.color = "red";
-        }
-    };
-}
-
+    try {
+        const result = await post("/login", {
+            username: $("loginEmail").value.trim().toLowerCase(),
+            password: $("loginPassword").value
+        });
+        show(message, result.message, "green");
+        form.reset();
+    } catch (error) {
+        show(message, error instanceof TypeError ? "Could not connect to the server." : error.message, "red");
+    }
+};
 renderUsers();
